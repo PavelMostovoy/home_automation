@@ -140,6 +140,17 @@ open <http://192.168.71.1/>.
 
 ---
 
+## Hardware wiring (Arduino Nano ESP32, ABX00083)
+
+The code uses GPIO numbers; the board silkscreen shows Arduino labels.
+Official pinout: `documentation/ABX00083-full-pinout.pdf`.
+
+| Function       | Board pin | GPIO | Notes |
+|----------------|-----------|------|-------|
+| DS18B20 data   | A3        | 4    | 4.7 kΩ pull-up to **3V3** (never 5 V); sensor VDD on 3V3 |
+
+---
+
 ## Project layout
 
 ```
@@ -150,6 +161,7 @@ src/
   web.rs       HTTP server
   web/index.html  web UI
   state.rs     thermostat state
+  ds18b20.rs   DS18B20 sensor on A3/GPIO4 (bit-banged 1-Wire)
 .cargo/config.toml   target, runner, ESP-IDF version, project-local tool install
 rust-toolchain.toml  uses the `esp` toolchain
 tmp/                 scratch scripts and findings (git-ignored)

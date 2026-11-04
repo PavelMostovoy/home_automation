@@ -33,8 +33,8 @@
 <main>
   <h1>Thermostat <span class="mut" id="conn"></span></h1>
   <div class="grid">
-    <div class="card"><div class="label">Actual</div><div class="big" id="cur">--.-°</div></div>
-    <div class="card"><div class="label">Target</div><div class="big" id="tgt">--.-°</div></div>
+    <div class="card"><div class="label">Actual</div><div class="big" id="cur">--.--°</div></div>
+    <div class="card"><div class="label">Target</div><div class="big" id="tgt">--.--°</div></div>
 
     <div class="card"><div class="label">Heater</div><div class="big" id="heater">0%</div><div class="bar"><div id="heaterBar"></div></div></div>
     <div class="card"><div class="label">Fan</div><div class="big" id="fan">0%</div><div class="bar"><div id="fanBar"></div></div></div>
@@ -49,7 +49,7 @@
       <div class="label">Set target temperature (°C)</div>
       <div class="row">
         <button onclick="step(-0.5)">−</button>
-        <input type="number" id="newTarget" step="0.5" min="5" max="80">
+        <input type="number" id="newTarget" step="0.5" min="5" max="80" value="25.0">
         <button onclick="step(0.5)">+</button>
         <button class="primary" onclick="send({target_temp_c: parseFloat(el('newTarget').value)})">Set</button>
       </div>
@@ -60,19 +60,17 @@
 </main>
 <script>
 const el = id => document.getElementById(id);
-let last = null, editing = false;
-el('newTarget').addEventListener('focus', () => editing = true);
-el('newTarget').addEventListener('blur', () => editing = false);
+let last = null;
 
 function step(d) {
-  const v = parseFloat(el('newTarget').value || (last ? last.target_temp_c : 25));
+  const v = parseFloat(el('newTarget').value) || 25;
   el('newTarget').value = (Math.round((v + d) * 2) / 2).toFixed(1);
 }
 
 function render(s) {
   last = s;
-  el('cur').textContent = s.current_temp_c == null ? '--.-°' : s.current_temp_c.toFixed(1) + '°';
-  el('tgt').textContent = s.target_temp_c.toFixed(1) + '°';
+  el('cur').textContent = s.current_temp_c == null ? '--.--°' : s.current_temp_c.toFixed(2) + '°';
+  el('tgt').textContent = s.target_temp_c.toFixed(2) + '°';
   el('heater').textContent = Math.round(s.heater_duty) + '%';
   el('fan').textContent = Math.round(s.fan_duty) + '%';
   el('heaterBar').style.width = s.heater_duty + '%';
@@ -81,7 +79,6 @@ function render(s) {
   el('status').textContent = st;
   el('status').className = 'st-' + st.replace(' ', '_');
   el('toggle').textContent = s.enabled ? 'Disable' : 'Enable';
-  if (!editing && document.activeElement !== el('newTarget')) el('newTarget').value = s.target_temp_c.toFixed(1);
   el('extra').textContent = `uptime ${s.uptime_s}s`;
 }
 
@@ -98,7 +95,6 @@ async function send(body) {
   try {
     const r = await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     if (!r.ok) { el('msg').textContent = await r.text(); return; }
-    editing = false; el('newTarget').blur();
     render(await r.json());
   } catch (e) { el('msg').textContent = 'request failed'; }
 }
