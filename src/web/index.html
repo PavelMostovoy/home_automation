@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thermostat</title>
+<style>
+  :root { --bg:#111418; --card:#1b2027; --fg:#e8eaed; --mut:#9aa0a6; --heat:#ff7043; --cool:#4fc3f7; --ok:#81c784; --bad:#e57373; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width: 480px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.2rem; font-weight: 600; margin: 4px 0 16px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card { background:var(--card); border-radius: 12px; padding: 14px; }
+  .label { color:var(--mut); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+  .big { font-size: 2.2rem; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .wide { grid-column: 1 / -1; }
+  .bar { height: 8px; background:#2a313a; border-radius: 4px; overflow:hidden; margin-top: 8px; }
+  .bar > div { height:100%; width:0; transition: width .4s; }
+  #heaterBar { background: var(--heat); } #fanBar { background: var(--cool); }
+  .row { display:flex; gap:8px; align-items:center; margin-top: 10px; }
+  input[type=number] { flex:1; font-size:1.2rem; padding:8px; border-radius:8px; border:1px solid #333; background:#0d1014; color:var(--fg); width: 0; }
+  button { font-size:1.1rem; padding:8px 14px; border-radius:8px; border:0; background:#2f3a46; color:var(--fg); cursor:pointer; }
+  button.primary { background:#3d6df2; }
+  #status { font-weight:600; }
+  .st-heating { color:var(--heat); } .st-cooling { color:var(--cool); } .st-idle { color:var(--ok); }
+  .st-no_sensor { color:var(--bad); } .st-disabled { color:var(--mut); }
+  #msg { color:var(--bad); min-height: 1.2em; font-size: .9rem; margin-top: 8px; }
+  .mut { color:var(--mut); font-size:.8rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Thermostat <span class="mut" id="conn"></span></h1>
+  <div class="grid">
+    <div class="card"><div class="label">Actual</div><div class="big" id="cur">--.-°</div></div>
+    <div class="card"><div class="label">Target</div><div class="big" id="tgt">--.-°</div></div>
+
+    <div class="card"><div class="label">Heater</div><div class="big" id="heater">0%</div><div class="bar"><div id="heaterBar"></div></div></div>
+    <div class="card"><div class="label">Fan</div><div class="big" id="fan">0%</div><div class="bar"><div id="fanBar"></div></div></div>
+
+    <div class="card wide">
+      <div class="label">Status</div>
+      <div class="row"><span id="status">-</span><span style="flex:1"></span>
+        <button id="toggle">Disable</button></div>
+    </div>
+
+    <div class="card wide">
+      <div class="label">Set target temperature (°C)</div>
+      <div class="row">
+        <button onclick="step(-0.5)">−</button>
+        <input type="number" id="newTarget" step="0.5" min="5" max="80">
+        <button onclick="step(0.5)">+</button>
+        <button class="primary" onclick="send({target_temp_c: parseFloat(el('newTarget').value)})">Set</button>
+      </div>
+      <div id="msg"></div>
+    </div>
+  </div>
+  <p class="mut" id="extra"></p>
+</main>
+<script>
+const el = id => document.getElementById(id);
+let last = null, editing = false;
+el('newTarget').addEventListener('focus', () => editing = true);
+el('newTarget').addEventListener('blur', () => editing = false);
+
+function step(d) {
+  const v = parseFloat(el('newTarget').value || (last ? last.target_temp_c : 25));
+  el('newTarget').value = (Math.round((v + d) * 2) / 2).toFixed(1);
+}
+
+function render(s) {
+  last = s;
+  el('cur').textContent = s.current_temp_c == null ? '--.-°' : s.current_temp_c.toFixed(1) + '°';
+  el('tgt').textContent = s.target_temp_c.toFixed(1) + '°';
+  el('heater').textContent = Math.round(s.heater_duty) + '%';
+  el('fan').textContent = Math.round(s.fan_duty) + '%';
+  el('heaterBar').style.width = s.heater_duty + '%';
+  el('fanBar').style.width = s.fan_duty + '%';
+  const st = !s.enabled ? 'disabled' : s.heater_duty > 0 ? 'heating' : s.fan_duty > 0 ? 'cooling' : s.current_temp_c == null ? 'no sensor' : 'idle';
+  el('status').textContent = st;
+  el('status').className = 'st-' + st.replace(' ', '_');
+  el('toggle').textContent = s.enabled ? 'Disable' : 'Enable';
+  if (!editing && document.activeElement !== el('newTarget')) el('newTarget').value = s.target_temp_c.toFixed(1);
+  el('extra').textContent = `uptime ${s.uptime_s}s`;
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/api/status', {cache: 'no-store'});
+    render(await r.json());
+    el('conn').textContent = '';
+  } catch (e) { el('conn').textContent = '· offline'; }
+}
+
+async function send(body) {
+  el('msg').textContent = '';
+  try {
+    const r = await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    if (!r.ok) { el('msg').textContent = await r.text(); return; }
+    editing = false; el('newTarget').blur();
+    render(await r.json());
+  } catch (e) { el('msg').textContent = 'request failed'; }
+}
+
+el('toggle').onclick = () => last && send({enabled: !last.enabled});
+poll(); setInterval(poll, 1000);
+</script>
+</body>
+</html>
