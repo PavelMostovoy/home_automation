@@ -1,7 +1,6 @@
 //! DS18B20 temperature sensor on a bit-banged 1-Wire bus.
 //!
 //! Wiring (Arduino Nano ESP32): DQ -> A3 = GPIO4, VDD -> 3V3, GND -> GND,
-//! 4.7 kΩ pull-up between DQ and 3V3 (never 5 V). External power (not parasite).
 //!
 //! Single sensor on the bus: commands use SKIP ROM. Each timing-critical slot runs with
 //! interrupts disabled (≤ ~70 µs) so Wi-Fi interrupts can't stretch the pulses.
