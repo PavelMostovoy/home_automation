@@ -148,6 +148,36 @@ Official pinout: `documentation/ABX00083-full-pinout.pdf`.
 | Function       | Board pin | GPIO | Notes |
 |----------------|-----------|------|-------|
 | DS18B20 data   | A3        | 4    | 4.7 kΩ pull-up to **3V3** (never 5 V); sensor VDD on 3V3 |
+| Fan MOSFET     | D2        | 5    | IRF520-type module, 2-wire fan, PWM 10 kHz / 12-bit (LEDC timer0) |
+| Heater MOSFET  | D3        | 6    | LR7843 optocoupled module, ceramic heater ~5-10 A, PWM 10 Hz / 14-bit (LEDC timer1) |
+
+- The ESP32 is powered from USB. The heater and fan have their own supply.
+- Put a flyback diode across the fan (e.g. 1N5819, cathode to +V).
+- Keep heater PWM **slow**: at 25 kHz the LR7843 module overheated even at 10 % duty,
+  because its optocoupler gate drive switches slowly. At 10-25 Hz it stays cool.
+- LEDC limit: `80 MHz / (freq × 2^bits)` must be 1..1023. Low frequencies need **more**
+  resolution bits (10 Hz → 13-14 bits), high frequencies fewer (25 kHz → ≤ 11 bits).
+
+---
+
+## Control
+
+- `src/pid.rs` holds the PID gains (`KP`, `KI`, `KD`), the loop period and the output
+  limits, plus the controller (anti-windup, derivative on measurement).
+- The `control` thread runs every second. It reads the temperature and target, computes
+  the heater duty (0-100 %), and sets the fan to `20 % + 0.8 × heater`. The fan never
+  stops; its minimum is `FAN_MIN_DUTY` in `src/config.rs`.
+- If control is disabled or the sensor has no valid reading, the heater goes to 0 % and
+  the fan to 20 %.
+- Heater and fan duties are published in `/api/status` and shown in the web UI.
+
+## Troubleshooting
+
+- **Wi-Fi/web unstable**: check the serial log for `stack overflow`, `Guru Meditation`,
+  `Brownout` or `rst:`. A thread stack overflow causes a reboot. Float formatting in
+  `log!` needs more than 4 KB of stack, so the control thread uses 8 KB.
+- Per-second logs (temperature, heater/fan duty) are `log::debug!`, so they're hidden at
+  the default `info` level. Change them to `log::info!` temporarily to see them.
 
 ---
 
@@ -155,8 +185,9 @@ Official pinout: `documentation/ABX00083-full-pinout.pdf`.
 
 ```
 src/
-  main.rs      entry point
-  config.rs    compile-time config (AP credentials, setpoint limits, planned pins)
+  main.rs      entry point, PWM setup (fan D2, heater D3), control loop
+  pid.rs       PID configuration (gains, period, limits) and controller
+  config.rs    compile-time config (AP credentials, setpoint limits, fan minimum, pins)
   wifi.rs      soft access point
   web.rs       HTTP server
   web/index.html  web UI
